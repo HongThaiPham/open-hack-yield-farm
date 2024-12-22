@@ -81,17 +81,13 @@ contract YieldFarm is ReentrancyGuard, Ownable {
         lastUpdateTime = block.timestamp;
 
         UserInfo storage user = userInfo[_user];
-        user.pendingRewards = earned(_user);
-        user.rewardDebt = (user.amount * rewardPerTokenStored) / 1e18;
+        if (user.amount > 0) {
+            user.pendingRewards = earned(_user);
+            user.rewardDebt = (user.amount * rewardPerTokenStored) / 1e18;
+        }
     }
 
     function rewardPerToken() public view returns (uint256) {
-        // TODO: Implement pending rewards calculation
-        // Requirements:
-        // 1. Calculate rewards since last update
-        // 2. Apply boost multiplier
-        // 3. Return total pending rewards
-
         if (totalStaked == 0) {
             return rewardPerTokenStored;
         }
@@ -102,12 +98,6 @@ contract YieldFarm is ReentrancyGuard, Ownable {
     }
 
     function earned(address _user) public view returns (uint256) {
-        // TODO: Implement pending rewards calculation
-        // Requirements:
-        // 1. Calculate rewards since last update
-        // 2. Apply boost multiplier
-        // 3. Return total pending rewards
-
         UserInfo memory user = userInfo[_user];
 
         uint256 _rewardPerToken = rewardPerToken();
@@ -118,8 +108,9 @@ contract YieldFarm is ReentrancyGuard, Ownable {
 
         uint256 newReward = ((_rewardPerToken - user.rewardDebt) *
             user.amount) / 1e18;
-        return newReward;
-        // return (newReward * calculateBoostMultiplier(_user)) / 100;
+        return
+            user.pendingRewards +
+            ((newReward * calculateBoostMultiplier(_user)) / 100);
     }
 
     /**
@@ -127,12 +118,6 @@ contract YieldFarm is ReentrancyGuard, Ownable {
      * @param _amount Amount of LP tokens to stake
      */
     function stake(uint256 _amount) external nonReentrant {
-        // TODO: Implement staking logic
-        // Requirements:
-        // 1. Update rewards
-        // 2. Transfer LP tokens from user
-        // 3. Update user info and total staked amount
-        // 4. Emit Staked event
         require(_amount > 0, "Cannot stake 0");
         require(
             lpToken.balanceOf(msg.sender) >= _amount,
@@ -151,7 +136,10 @@ contract YieldFarm is ReentrancyGuard, Ownable {
 
         user.amount += _amount;
 
-        lpToken.transferFrom(msg.sender, address(this), _amount);
+        require(
+            lpToken.transferFrom(msg.sender, address(this), _amount),
+            "Transfer failed"
+        );
 
         emit Staked(msg.sender, _amount);
     }
@@ -161,13 +149,6 @@ contract YieldFarm is ReentrancyGuard, Ownable {
      * @param _amount Amount of LP tokens to withdraw
      */
     function withdraw(uint256 _amount) external nonReentrant {
-        // TODO: Implement withdrawal logic
-        // Requirements:
-        // 1. Update rewards
-        // 2. Transfer LP tokens to user
-        // 3. Update user info and total staked amount
-        // 4. Emit Withdrawn event
-
         require(_amount > 0, "Amount must be greater than 0");
 
         UserInfo storage user = userInfo[msg.sender];
@@ -179,7 +160,7 @@ contract YieldFarm is ReentrancyGuard, Ownable {
         totalStaked -= _amount;
         user.amount -= _amount;
 
-        lpToken.transfer(msg.sender, _amount);
+        require(lpToken.transfer(msg.sender, _amount), "Transfer failed");
 
         emit Withdrawn(msg.sender, _amount);
     }
@@ -188,41 +169,32 @@ contract YieldFarm is ReentrancyGuard, Ownable {
      * @notice Claim pending rewards
      */
     function claimRewards() external nonReentrant {
-        // TODO: Implement reward claiming logic
-        // Requirements:
-        // 1. Calculate pending rewards with boost multiplier
-        // 2. Transfer rewards to user
-        // 3. Update user reward debt
-        // 4. Emit RewardsClaimed event
-
-        UserInfo storage user = userInfo[msg.sender];
-
         updateReward(msg.sender);
-
         uint256 rewards = earned(msg.sender);
 
         if (rewards > 0) {
+            UserInfo storage user = userInfo[msg.sender];
             user.pendingRewards = 0;
             user.rewardDebt = (user.amount * rewardPerTokenStored) / 1e18;
 
-            rewardToken.transfer(msg.sender, rewards);
+            require(
+                rewardToken.transfer(msg.sender, rewards),
+                "Reward transfer failed"
+            );
 
             emit RewardsClaimed(msg.sender, rewards);
         }
+
+        lastUpdateTime = block.timestamp;
     }
 
     /**
      * @notice Emergency withdraw without caring about rewards
      */
     function emergencyWithdraw() external nonReentrant {
-        // TODO: Implement emergency withdrawal
-        // Requirements:
-        // 1. Transfer all LP tokens back to user
-        // 2. Reset user info
-        // 3. Emit EmergencyWithdrawn event
-
         UserInfo storage user = userInfo[msg.sender];
-        lpToken.transfer(msg.sender, user.amount);
+        require(user.amount > 0, "No staked amount");
+        require(lpToken.transfer(msg.sender, user.amount), "Transfer failed");
 
         totalStaked -= user.amount;
 
@@ -242,10 +214,6 @@ contract YieldFarm is ReentrancyGuard, Ownable {
     function calculateBoostMultiplier(
         address _user
     ) public view returns (uint256) {
-        // TODO: Implement boost multiplier calculation
-        // Requirements:
-        // 1. Calculate staking duration
-        // 2. Return appropriate multiplier based on duration thresholds
         UserInfo memory user = userInfo[_user];
         if (user.amount == 0) {
             return 100;
@@ -268,10 +236,6 @@ contract YieldFarm is ReentrancyGuard, Ownable {
      * @param _newRate New reward rate per second
      */
     function updateRewardRate(uint256 _newRate) external onlyOwner {
-        // TODO: Implement reward rate update logic
-        // Requirements:
-        // 1. Update rewards before changing rate
-        // 2. Set new reward rate
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = block.timestamp;
         rewardRate = _newRate;
